@@ -1,9 +1,9 @@
 # couchdiscover
-[![Build Status](https://travis-ci.org/joeblackwaslike/couchdiscover.svg?branch=master)](https://travis-ci.org/joeblackwaslike/couchdiscover) [![Github Repo](https://img.shields.io/badge/contributions-welcome-brightgreen.svg?style=flat)](https://github.com/joeblackwaslike/couchdiscover) [![Pypi Version](https://img.shields.io/pypi/v/couchdiscover.svg)](https://pypi.python.org/pypi/couchdiscover) [![Pypi License](https://img.shields.io/pypi/l/couchdiscover.svg)](https://pypi.python.org/pypi/couchdiscover) [![Pypi Wheel](https://img.shields.io/pypi/wheel/couchdiscover.svg)](https://pypi.python.org/pypi/couchdiscover) [![Pypi Versions](https://img.shields.io/pypi/pyversions/couchdiscover.svg)](https://pypi.python.org/pypi/couchdiscover) [![Docker Pulls](https://img.shields.io/docker/pulls/joeblackwaslike/couchdiscover.svg)](https://hub.docker.com/r/joeblackwaslike/couchdiscover/)
+This repository is a fork of the [original repository](https://github.com/joeblackwaslike/couchdiscover/) but with some changes to use the apache couchdb container.
 
-
-## Maintainer
-Joe Black | <me@joeblack.nyc> | [github](https://github.com/joeblackwaslike)
+## Credits
+Original author: Joe Black | <me@joeblack.nyc> | [github](https://github.com/joeblackwaslike)
+Maintainer: Alfredo Matas | alfredo@raisingthefloor.org | [github](https://github.com/amatas)
 
 
 ## Description
@@ -16,9 +16,8 @@ This tool is meant to be used in a kubernetes cluster as a sidecar container.
 
 ## Environment variables used by couchdiscover:
 ### `couchdb` container:
-* `COUCHDB_ADMIN_USER`: username to use when enabling the node, required.
-* `COUCHDB_ADMIN_PASS`: password to use when enabling the node, required.
-* `ERLANG_COOKIE`: cookie value to use as the `.erlang.cookie`, not required, fails back to insecure cookie value when not set.
+* `COUCHDB_USER`: username to use when enabling the node, required.
+* `COUCHDB_PASSWORD`: password to use when enabling the node, required.
 * `COUCHDB_CLUSTER_SIZE`: not required, overrides the value of `spec.replicas` in the statefulset, should rarely be necessary to set. Don't set unless you know what you're doing.
 
 ### `couchdiscover` container:
@@ -31,7 +30,7 @@ In order to best use something that is essentially "zero configuration," it help
 
 1. Initially a great deal of information is obtained by grabbing the hostname of the container that's part of a statefulset and parsing it.  This is how the namespace is determined, how hostnames are calculated later, the name of the statefulset to look for in the api, the name of the headless service, the node name, the index, whether a node is master or not, etc.
 
-2. The kubernetes api is used to grab the statefulset and entrypoint objects. The entrypoint object is parsed to obtain the `hosts` list.  Then the statefulset is parsed for the ports, then the environment is resolved, fetching any externally referenced configmaps or secrets that are necessary.  Credentials are resolved by looking through the environment for the keys: `COUCHDB_ADMIN_USER`, `COUCHDB_ADMIN_PASS`.  Finally the expected cluster size is set to the number of replicas in the fetched statefulset.  You can override this as detailed in the above notes section, but should be completely unnecessary for most cases.
+2. The kubernetes api is used to grab the statefulset and entrypoint objects. The entrypoint object is parsed to obtain the `hosts` list.  Then the statefulset is parsed for the ports, then the environment is resolved, fetching any externally referenced configmaps or secrets that are necessary.  Credentials are resolved by looking through the environment for the keys: `COUCHDB_USER`, `COUCHDB_PASSWORD`.  Finally the expected cluster size is set to the number of replicas in the fetched statefulset.  You can override this as detailed in the above notes section, but should be completely unnecessary for most cases.
 
 
 ## Main logic

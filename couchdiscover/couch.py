@@ -110,10 +110,9 @@ class CouchServer(util.ReprMixin):
         """Server stats."""
         pass
 
-    @util.passthrough
     def version(self, *args, **kwargs):
         """Gets version of CouchDB."""
-        pass
+        return self.request(uri='/_config/vendor/version')
 
     def all_dbs(self):
         """Returns a generator iterating all DB objects."""
@@ -125,6 +124,7 @@ class CouchServer(util.ReprMixin):
         url = self._build_url(uri)
         sess = self._session
         try:
+            print(verb, url, params, data, headers)
             req = sess.request(verb, url, params, data, headers, files=files)
             try:
                 json_ = req.json()
@@ -240,7 +240,9 @@ class CouchInitClient:
 
     def _build_cluster_setup_payload(
             self, action='add', host=None, port=None, creds=None):
-        """Builds a data payload for `request`."""
+        """Builds a data payload for `request`.
+        More info at http://docs.couchdb.org/en/2.1.0/cluster/setup.html?highlight=_cluster_setup#the-cluster-setup-api
+        """
         if not host:
             host = self._args['host']
         if not port:

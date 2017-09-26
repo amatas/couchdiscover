@@ -267,8 +267,8 @@ class KubeInterface(util.ReprMixin):
         """Returns a tuple of user/pass for the CouchDB statefulset."""
         statefulset = self._host.statefulset
         env = self.api.get_environment(statefulset, statefulset)
-        user = env.get('COUCHDB_ADMIN_USER', config.DEFAULT_CREDS[0])
-        password = env.get('COUCHDB_ADMIN_PASS', config.DEFAULT_CREDS[1])
+        user = env.get('COUCHDB_USER', config.DEFAULT_CREDS[0])
+        password = env.get('COUCHDB_PASSWORD', config.DEFAULT_CREDS[1])
         return (user, password)
 
     @property

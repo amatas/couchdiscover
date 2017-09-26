@@ -17,11 +17,11 @@ setup(
     description='Autodiscovery & Clustering for CouchDB 2.0 with Kubernetes',
     long_description=readme,
     keywords = ['couchdb', 'kubernetes', 'cluster'],
-    author='Joe Black',
-    author_email='joeblack949@gmail.com',
-    url='https://github.com/joeblackwaslike/couchdiscover',
+    author='Alfredo Matas', # author='Joe Black',
+    author_email='alfredo@raisingthefloor.org', # author_email='joeblack949@gmail.com',
+    url='https://github.com/amatas/couchdiscover',
     download_url=(
-        'https://github.com/joeblackwaslike/couchdiscover/tarball/%s' %
+        'https://github.com/amatas/couchdiscover/tarball/%s' %
         version
     ),
     license='Apache 2.0',
