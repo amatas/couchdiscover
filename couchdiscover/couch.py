@@ -21,7 +21,7 @@ from . import config, util
 from .exceptions import CouchAddNodeError
 
 
-ADMIN_ONLY_DBS = ('_dbs', '_nodes', '_replicator', '_users')
+ADMIN_ONLY_DBS = ('_dbs', '_nodes', '_replicator', '_users', '_global_changes')
 log = logging.getLogger(__name__)
 
 
@@ -124,7 +124,6 @@ class CouchServer(util.ReprMixin):
         url = self._build_url(uri)
         sess = self._session
         try:
-            print(verb, url, params, data, headers)
             req = sess.request(verb, url, params, data, headers, files=files)
             try:
                 json_ = req.json()
@@ -146,6 +145,7 @@ class CouchInitClient:
         self._wait_for_couch()
         self._servers = self._setup_servers()
         self._upgrade_auth_if_enabled()
+        self._init_sys_databases_if_enabled()
 
     def _wait_for_couch(self):
         args = self._args
@@ -170,6 +170,17 @@ class CouchInitClient:
     def _upgrade_auth(self):
         self._secure = True
         self._servers = self._setup_servers(auth=True)
+
+    def _init_sys_databases_if_enabled(self):
+        status = self.status
+        if 'disabled' not in status:
+            server = self._servers.get('admin')
+            for database in ADMIN_ONLY_DBS:
+                try:
+                    req = server.create(database)
+                    log.info (req)
+                except couchdb.http.PreconditionFailed:
+                    pass
 
     @property
     def status(self):
@@ -241,7 +252,7 @@ class CouchInitClient:
     def _build_cluster_setup_payload(
             self, action='add', host=None, port=None, creds=None):
         """Builds a data payload for `request`.
-        More info at http://docs.couchdb.org/en/2.1.0/cluster/setup.html?highlight=_cluster_setup#the-cluster-setup-api
+        More info at http://docs.couchdb.org/en/2.1.0/cluster/setup.html#the-cluster-setup-api
         """
         if not host:
             host = self._args['host']
