@@ -232,7 +232,7 @@ class KubeInterface(util.ReprMixin):
     """This class exposes the information we need from kubernetes as lazy
     evaluated properties, caching provided by pykube.
     """
-    _public_attrs = ('hosts', 'ports', 'creds', 'cluster_size')
+    _public_attrs = ('hosts', 'ports', 'creds', 'cluster_size', 'initial_database')
 
     def __init__(self, host, env=None):
         self._host = host
@@ -270,6 +270,14 @@ class KubeInterface(util.ReprMixin):
         user = env.get('COUCHDB_USER', config.DEFAULT_CREDS[0])
         password = env.get('COUCHDB_PASSWORD', config.DEFAULT_CREDS[1])
         return (user, password)
+
+    @property
+    def initial_database(self):
+        """Returns a string of initial database to be created."""
+        statefulset = self._host.statefulset
+        env = self.api.get_environment(statefulset, statefulset)
+        initial_db = env.get('INITIAL_DB', [])
+        return initial_db
 
     @property
     def cluster_size(self):
