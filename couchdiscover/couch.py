@@ -95,10 +95,9 @@ class CouchServer(util.ReprMixin):
         """Displays server configuration."""
         pass
 
-    @util.passthrough
-    def create(self, *args, **kwargs):
+    def create(self, database):
         """Create a database."""
-        pass
+        return self.request(verb='PUT', uri='/' + database)
 
     @util.passthrough
     def delete(self, *args, **kwargs):
@@ -140,6 +139,7 @@ class CouchInitClient:
                  creds=config.DEFAULT_CREDS, proto='http'):
         self.env = env
         self._secure = False
+        self._version = None
         self._args = dict(
             proto=proto, host=str(host), ports=ports, creds=creds)
         self._wait_for_couch()
@@ -172,6 +172,9 @@ class CouchInitClient:
         self._servers = self._setup_servers(auth=True)
 
     def _init_sys_databases_if_enabled(self):
+        # CouchDB 1.X comes with all the sys dbs by default
+        if self.version[0] == '1':
+            return
         status = self.status
         if 'disabled' not in status:
             server = self._servers.get('admin')
@@ -182,6 +185,11 @@ class CouchInitClient:
                 except couchdb.http.PreconditionFailed:
                     pass
 
+    def create_database(self, database=""):
+        server = self._servers.get('data')
+        req = server.create(database)
+        log.info (req)
+
     @property
     def status(self):
         """Returns the cluster_setup state string."""
@@ -191,6 +199,15 @@ class CouchInitClient:
         else:
             state = req['state']
         return state
+
+    @property
+    def version(self, *args, **kwargs):
+        """Gets version of CouchDB."""
+        if self._version == None:
+           req = self.request(
+               server='data', verb='GET', uri='/', data=None)
+           self._version = req['version']
+        return self._version
 
     @property
     def disabled(self):
@@ -374,6 +391,12 @@ class CouchManager:
         return self.local.status
 
     @property
+    def major_version(self):
+        """Returns the major version of CouchDB"""
+        log.info ("CouchDB version %s" % self.local.version[0])
+        return int(self.local.version[0])
+
+    @property
     def enabled(self):
         """Returns the `enabled` of wrapped local node."""
         return self.local.enabled
@@ -436,3 +459,36 @@ class CouchManager:
             self.wait_for_enabled_master()
             log.info('Adding: %s to master: %s', node, self.master)
             return self.master.add_node(node)
+
+    def create_database(self, database=""):
+        """Creates the initial empty database in the servers"""
+        try:
+            self.local.create_database(database)
+        except:
+            pass
+
+    def set_replication(self, node=None):
+        env = self.env
+        hosts = env.hosts
+        port = env.ports[0]
+        creds = env.creds
+        local_dbs = self.local.request(server='data', uri='_all_dbs')
+        sync_dbs =  list(set(local_dbs).difference(set(ADMIN_ONLY_DBS)))
+        log.info ("Syncing databases: " + str(sync_dbs))
+        for x in hosts:
+            for y in hosts:
+                if x != y :
+                    from_server = CouchServer(host=x, port=port, creds=creds)
+                    to_server = CouchServer(host=y, port=port, creds=creds)
+                    for db in sync_dbs:
+                        payload = {
+                        #    'name': '{}_rep'.format(db),
+                            'source': '{}'.format(db),
+                            'target': '{}/{}/'.format(to_server.url, db),
+                            'continuous': True
+                        }
+                        log.info('Setting replication from %s to %s on %s: %s' % (x, y, db, payload))
+                        payload= json.dumps(payload)
+                        req = from_server.request(verb='POST', uri='/_replicator', data=payload)
+                        log.info(req)
+

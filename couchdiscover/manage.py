@@ -24,7 +24,7 @@ class ContainerEnvironment(util.ReprMixin):
     """Represents a self configuring environment object that can be passed to
     initialize other objects.
     """
-    _public_attrs = ('index', 'statefulset', 'cluster_size', 'ports', 'creds')
+    _public_attrs = ('index', 'statefulset', 'hosts', 'cluster_size', 'ports', 'creds')
 
     def __init__(self, env=None, host=None):
         self.env = env
@@ -66,6 +66,11 @@ class ContainerEnvironment(util.ReprMixin):
         return self.host.statefulset
 
     @property
+    def hosts(self):
+        """Returns all the hosts used by the CouchDB statefulset."""
+        return self.kube.hosts
+
+    @property
     def ports(self):
         """Returns the ports used by the CouchDB statefulset."""
         return self.kube.ports
@@ -95,6 +100,10 @@ class ContainerEnvironment(util.ReprMixin):
         """Returns True if cluster is a single node cluster."""
         return self.cluster_size == 1
 
+    @property
+    def initial_database(self):
+        """Returns a string of the initial database to create."""
+        return self.kube.initial_database
 
 class ClusterManager(util.ReprMixin):
     """Represents the cluster manager, containing main logic that drives the
@@ -120,24 +129,34 @@ class ClusterManager(util.ReprMixin):
         """Main logic here, this is where we begin once all environment
         information has been retrieved."""
         log.info('Starting couchdiscover: %s', self.couch)
-        if self.couch.disabled:
-            log.info('Cluster disabled, enabling')
-            self.couch.enable()
-        elif self.couch.finished:
-            log.info('Cluster already finished')
-            self.sleep_forever()
+        if self.couch.major_version == 2:
+            # Create the cluster for CouchDB 2.X
+            if self.couch.disabled:
+                log.info('Cluster disabled, enabling')
+                self.couch.enable()
+            elif self.couch.finished:
+                log.info('Cluster already finished')
+                self.sleep_forever()
 
-        if self.env.first_node:
-            log.info("Looks like I'm the first node")
-            if self.env.single_node_cluster:
-                log.info('Single node cluster detected')
-                self.couch.finish()
-        else:
-            log.info("Looks like I'm not the first node")
-            self.couch.add_to_master()
+            if self.env.first_node:
+                log.info("Looks like I'm the first node")
+                if self.env.single_node_cluster:
+                    log.info('Single node cluster detected')
+                    self.couch.finish()
+            else:
+                log.info("Looks like I'm not the first node")
+                self.couch.add_to_master()
+                if self.env.last_node:
+                    log.info("Looks like I'm the last node")
+                    self.couch.finish()
+                else:
+                    log.info("Looks like I'm not the last node")
+        elif self.couch.major_version == 1:
+            # CouchDB 1.X only supports replication
+            self.couch.create_database(self.env.initial_database)
             if self.env.last_node:
                 log.info("Looks like I'm the last node")
-                self.couch.finish()
-            else:
-                log.info("Looks like I'm not the last node")
+                self.couch.set_replication()
+        else:
+            log.info("CouchDB version not recognized %s" % self.couch.major_version)
         self.sleep_forever()

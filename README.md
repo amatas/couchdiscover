@@ -7,7 +7,7 @@ Maintainer: Alfredo Matas | alfredo@raisingthefloor.org | [github](https://githu
 
 
 ## Description
-Utilizes the Kubernetes and CouchDB 2.0 clustering API's for automating the process of creating a CouchDB 2.0 Cluster. The reqirements here vary significantly compared to the predecessor BigCouch.
+Utilizes the Kubernetes and CouchDB 2.0 clustering API's for automating the process of creating a CouchDB 2.0 Cluster. If CouchDB 1.X is used it will create and replicate the database specified in the `INITIAL_DB` environment variable. The reqirements here vary significantly compared to the predecessor BigCouch.
 
 This module has an entrypoint stub called `couchdiscover` that will be created upon installation with setuptools.
 
@@ -19,6 +19,7 @@ This tool is meant to be used in a kubernetes cluster as a sidecar container.
 * `COUCHDB_USER`: username to use when enabling the node, required.
 * `COUCHDB_PASSWORD`: password to use when enabling the node, required.
 * `COUCHDB_CLUSTER_SIZE`: not required, overrides the value of `spec.replicas` in the statefulset, should rarely be necessary to set. Don't set unless you know what you're doing.
+* `INITIAL_DB`: only required if replication for CouchDB 1.X is used. The database must be created before the replication is configured. This variable is not required if CouchDB 2.X clustering is going to be used.
 
 ### `couchdiscover` container:
 * `LOG_LEVEL`: logging level to output container logs for.  Defaults to `INFO`, most logs are either INFO or WARNING level.
@@ -42,25 +43,35 @@ def run(self):
     """Main logic here, this is where we begin once all environment
     information has been retrieved."""
     log.info('Starting couchdiscover: %s', self.couch)
-    if self.couch.disabled:
-        log.info('Cluster disabled, enabling')
-        self.couch.enable()
-    elif self.couch.finished:
-        log.info('Cluster already finished')
-        self.sleep_forever()
+    if self.couch.major_version == 2:
+        # Create the cluster for CouchDB 2.X
+        if self.couch.disabled:
+            log.info('Cluster disabled, enabling')
+            self.couch.enable()
+        elif self.couch.finished:
+            log.info('Cluster already finished')
+            self.sleep_forever()
 
-    if self.env.first_node:
-        log.info("Looks like I'm the first node")
-        if self.env.single_node_cluster:
-            log.info('Single node cluster detected')
-            self.couch.finish()
-    else:
-        log.info("Looks like I'm not the first node")
-        self.couch.add_to_master()
+        if self.env.first_node:
+            log.info("Looks like I'm the first node")
+            if self.env.single_node_cluster:
+                log.info('Single node cluster detected')
+                self.couch.finish()
+        else:
+            log.info("Looks like I'm not the first node")
+            self.couch.add_to_master()
+            if self.env.last_node:
+                log.info("Looks like I'm the last node")
+                self.couch.finish()
+            else:
+                log.info("Looks like I'm not the last node")
+    elif self.couch.major_version == 1:
+        # CouchDB 1.X only supports replication
+        self.couch.create_database(self.env.initial_database)
         if self.env.last_node:
             log.info("Looks like I'm the last node")
-            self.couch.finish()
-        else:
-            log.info("Looks like I'm not the last node")
+            self.couch.set_replication()
+    else:
+        log.info("CouchDB version not recognized %s" % self.couch.major_version)
     self.sleep_forever()
 ```
