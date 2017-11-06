@@ -344,6 +344,11 @@ class CouchInitClient:
                 raise CouchAddNodeError(
                     'error adding node: %s resp: %s', remote, req)
 
+    def cluster_nodes(self):
+        """ Returns the 'cluster_nodes' of the membership endpoint """
+        membership = self.membership()
+        return membership["cluster_nodes"]
+
     def finish(self):
         """Finish the cluster."""
         return self.cluster_setup(action='finish')
@@ -445,7 +450,7 @@ class CouchManager:
         if self.is_master:
             log.warning("Can't wait for master when master: %s", self.local)
         else:
-            while not self.master.enabled:
+            while not (self.master.enabled or self.master.finished):
                 log.info('Waiting for master: %s to be enabled', self.master)
                 time.sleep(5)
 
@@ -459,6 +464,11 @@ class CouchManager:
             self.wait_for_enabled_master()
             log.info('Adding: %s to master: %s', node, self.master)
             return self.master.add_node(node)
+
+    def node_in_cluster(self, node=None):
+        if node:
+            return node in self.master.cluster_nodes()
+        return self.local in self.master.cluster_nodes()
 
     def create_database(self, database=""):
         """Creates the initial empty database in the servers"""

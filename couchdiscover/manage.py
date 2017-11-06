@@ -135,6 +135,8 @@ class ClusterManager(util.ReprMixin):
                 log.info('Cluster disabled, enabling')
                 self.couch.enable()
             elif self.couch.finished:
+                if not self.couch.node_in_cluster():
+                    self.couch.add_to_cluster()
                 log.info('Cluster already finished')
                 self.sleep_forever()
 
