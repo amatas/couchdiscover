@@ -117,6 +117,14 @@ class CouchServer(util.ReprMixin):
         """Returns a generator iterating all DB objects."""
         return self.request(uri='/_all_dbs')
 
+    def get_shard_config(self, database=None):
+        if database:
+            return self.request(uri='/_dbs/' + database)
+
+    def save_shard_config(self, database=None, shard_config=""):
+        if database and shard_config:
+            return self.request(verb='PUT', uri='/_dbs/' + database, data=shard_config)
+
     def request(self, verb='get', uri='', params=None, data=None,
                 headers=None, files=None):
         """Send a low level HTTP request."""
@@ -178,7 +186,9 @@ class CouchInitClient:
         status = self.status
         if 'disabled' not in status:
             server = self._servers.get('admin')
-            for database in ADMIN_ONLY_DBS:
+            local_dbs = self.all_dbs(srv='admin')
+            dbs = [ d for d in ADMIN_ONLY_DBS if not d in local_dbs ]
+            for database in dbs:
                 try:
                     req = server.create(database)
                     log.info (req)
@@ -366,6 +376,19 @@ class CouchInitClient:
         """Returns the results of the `/_membership` endpoint."""
         return self.request(server='data', uri='/_membership')
 
+    def all_dbs(self, srv='data'):
+        """Returns the results of the `/_all_dbs` endpoint."""
+        server = self._servers.get(srv)
+        return server.all_dbs()
+
+    def get_shard_config(self, database=None):
+        server = self._servers.get('admin')
+        return server.get_shard_config(database)
+
+    def save_shard_config(self, database=None, shard_config=""):
+        server = self._servers.get('admin')
+        return server.save_shard_config(database=database, shard_config=shard_config)
+
     def up(self):
         """Returns if both CouchServer's return True for `s.up`"""
         return all([s.up for s in self._servers.values()])
@@ -440,6 +463,36 @@ class CouchManager:
         else:
             log.info('Finishing cluster: %s', self.local)
             return self.master.finish()
+
+    def balance_shards(self):
+        dbs = self.master.all_dbs()
+        udbs = [ d for d in dbs if not d.startswith('_') ]
+        nodes = self.master.cluster_nodes()
+        for db in udbs:
+            shard_config = self.master.get_shard_config(db)
+            new_shard_config = self.fix_shard_config(nodes=nodes, shard_config=shard_config)
+            if not new_shard_config:
+                continue
+            self.master.save_shard_config(database=db, shard_config=new_shard_config)
+
+    def fix_shard_config(self, nodes=[], shard_config=None):
+        """Reconfigue the shard config based on the number of nodes in the
+        cluster
+        """
+        if not shard_config or not nodes:
+            return ""
+
+        for node in iter(shard_config["by_node"]):
+            n_shards = shard_config["by_node"][node]
+            if isinstance(n_shards, list ) and len(n_shards) > 0:
+                break
+
+        out_shards = shard_config
+        out_shards["changelog"] = [ [ "add",s,n ] for s in n_shards for n in nodes ]
+        out_shards["by_node"] = { n:[s for s in n_shards] for n in nodes }
+        out_shards["by_range"] = { s:[n for n in nodes] for s in n_shards }
+
+        return json.dumps(out_shards)
 
     def wait_for_enabled_master(self):
         """Blocking wait until master is enabled.

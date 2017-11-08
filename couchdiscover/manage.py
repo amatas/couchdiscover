@@ -136,7 +136,7 @@ class ClusterManager(util.ReprMixin):
                 self.couch.enable()
             elif self.couch.finished:
                 if not self.couch.node_in_cluster():
-                    self.couch.add_to_cluster()
+                    self.couch.add_to_master()
                 log.info('Cluster already finished')
                 self.sleep_forever()
 
@@ -153,6 +153,7 @@ class ClusterManager(util.ReprMixin):
                     self.couch.finish()
                 else:
                     log.info("Looks like I'm not the last node")
+                self.couch.balance_shards()
         elif self.couch.major_version == 1:
             # CouchDB 1.X only supports replication
             self.couch.create_database(self.env.initial_database)
