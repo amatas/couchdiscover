@@ -402,7 +402,9 @@ class CouchManager:
         self.ports = env.ports
         self.creds = env.creds
         self.local = CouchInitClient(env, env.host, env.ports, env.creds)
-        if not self.is_master:
+        if self.is_master:
+            self.master = self.local
+        else:
             mhost = env.host.clone(master=True)
             self.master = CouchInitClient(env, mhost, env.ports, env.creds)
 
