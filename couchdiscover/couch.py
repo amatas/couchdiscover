@@ -117,6 +117,14 @@ class CouchServer(util.ReprMixin):
         """Returns a generator iterating all DB objects."""
         return self.request(uri='/_all_dbs')
 
+    def get_shard_config(self, database=None):
+        if database:
+            return self.request(uri='/_dbs/' + database)
+
+    def save_shard_config(self, database=None, shard_config=""):
+        if database and shard_config:
+            return self.request(verb='PUT', uri='/_dbs/' + database, data=shard_config)
+
     def request(self, verb='get', uri='', params=None, data=None,
                 headers=None, files=None):
         """Send a low level HTTP request."""
@@ -178,7 +186,9 @@ class CouchInitClient:
         status = self.status
         if 'disabled' not in status:
             server = self._servers.get('admin')
-            for database in ADMIN_ONLY_DBS:
+            local_dbs = self.all_dbs(srv='admin')
+            dbs = [ d for d in ADMIN_ONLY_DBS if not d in local_dbs ]
+            for database in dbs:
                 try:
                     req = server.create(database)
                     log.info (req)
@@ -344,6 +354,11 @@ class CouchInitClient:
                 raise CouchAddNodeError(
                     'error adding node: %s resp: %s', remote, req)
 
+    def cluster_nodes(self):
+        """ Returns the 'cluster_nodes' of the membership endpoint """
+        membership = self.membership()
+        return membership["cluster_nodes"]
+
     def finish(self):
         """Finish the cluster."""
         return self.cluster_setup(action='finish')
@@ -361,6 +376,19 @@ class CouchInitClient:
         """Returns the results of the `/_membership` endpoint."""
         return self.request(server='data', uri='/_membership')
 
+    def all_dbs(self, srv='data'):
+        """Returns the results of the `/_all_dbs` endpoint."""
+        server = self._servers.get(srv)
+        return server.all_dbs()
+
+    def get_shard_config(self, database=None):
+        server = self._servers.get('admin')
+        return server.get_shard_config(database)
+
+    def save_shard_config(self, database=None, shard_config=""):
+        server = self._servers.get('admin')
+        return server.save_shard_config(database=database, shard_config=shard_config)
+
     def up(self):
         """Returns if both CouchServer's return True for `s.up`"""
         return all([s.up for s in self._servers.values()])
@@ -374,7 +402,9 @@ class CouchManager:
         self.ports = env.ports
         self.creds = env.creds
         self.local = CouchInitClient(env, env.host, env.ports, env.creds)
-        if not self.is_master:
+        if self.is_master:
+            self.master = self.local
+        else:
             mhost = env.host.clone(master=True)
             self.master = CouchInitClient(env, mhost, env.ports, env.creds)
 
@@ -436,6 +466,36 @@ class CouchManager:
             log.info('Finishing cluster: %s', self.local)
             return self.master.finish()
 
+    def balance_shards(self):
+        dbs = self.master.all_dbs()
+        udbs = [ d for d in dbs if not d.startswith('_') ]
+        nodes = self.master.cluster_nodes()
+        for db in udbs:
+            shard_config = self.master.get_shard_config(db)
+            new_shard_config = self.fix_shard_config(nodes=nodes, shard_config=shard_config)
+            if not new_shard_config:
+                continue
+            self.master.save_shard_config(database=db, shard_config=new_shard_config)
+
+    def fix_shard_config(self, nodes=[], shard_config=None):
+        """Reconfigue the shard config based on the number of nodes in the
+        cluster
+        """
+        if not shard_config or not nodes:
+            return ""
+
+        for node in iter(shard_config["by_node"]):
+            n_shards = shard_config["by_node"][node]
+            if isinstance(n_shards, list ) and len(n_shards) > 0:
+                break
+
+        out_shards = shard_config
+        out_shards["changelog"] = [ [ "add",s,n ] for s in n_shards for n in nodes ]
+        out_shards["by_node"] = { n:[s for s in n_shards] for n in nodes }
+        out_shards["by_range"] = { s:[n for n in nodes] for s in n_shards }
+
+        return json.dumps(out_shards)
+
     def wait_for_enabled_master(self):
         """Blocking wait until master is enabled.
 
@@ -445,7 +505,7 @@ class CouchManager:
         if self.is_master:
             log.warning("Can't wait for master when master: %s", self.local)
         else:
-            while not self.master.enabled:
+            while not (self.master.enabled or self.master.finished):
                 log.info('Waiting for master: %s to be enabled', self.master)
                 time.sleep(5)
 
@@ -459,6 +519,11 @@ class CouchManager:
             self.wait_for_enabled_master()
             log.info('Adding: %s to master: %s', node, self.master)
             return self.master.add_node(node)
+
+    def node_in_cluster(self, node=None):
+        if node:
+            return node in self.master.cluster_nodes()
+        return self.local in self.master.cluster_nodes()
 
     def create_database(self, database=""):
         """Creates the initial empty database in the servers"""
