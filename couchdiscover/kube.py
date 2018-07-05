@@ -78,7 +78,7 @@ class KubeHostname:
 
     @staticmethod
     def _split_node(node):
-        statefulset, index = node.split('-')
+        statefulset, index = node.rsplit('-', 1)
         index = int(index)
         return statefulset, index
 
